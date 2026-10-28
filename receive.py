@@ -175,6 +175,9 @@ def main():
 
     while True:
         conn, addr = server.accept()
+        # Some Wi-Fi routers relay connections and never pass on a close, so drop
+        # anything that goes quiet instead of waiting on it forever.
+        conn.settimeout(60)
         print(f"Connected: {addr[0]}")
         try:
             with conn:
