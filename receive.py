@@ -108,10 +108,18 @@ def handle(conn, dest, code):
             continue
 
         target = safe_target(dest, rel)
-        target.parent.mkdir(parents=True, exist_ok=True)
         part = target.with_name(target.name + ".part")
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            out = open(part, "wb")
+        except OSError as e:
+            # Can't write this one (bad name, path too long, permissions): still read its
+            # bytes off the wire so the next file lines up, and report it at the end.
+            out, write_error = open(os.devnull, "wb"), str(e)
+        else:
+            write_error = None
         h, left = hashlib.sha256(), hdr["size"]
-        with open(part, "wb") as out:
+        with out:
             while left:
                 chunk = conn.recv(min(CHUNK, left))
                 if not chunk:
@@ -122,7 +130,9 @@ def handle(conn, dest, code):
                 done_bytes += len(chunk)
         digest = recv_exact(conn, 32)
 
-        if digest == h.digest():
+        if write_error:
+            failed.append([rel, f"couldn't save: {write_error}"])
+        elif digest == h.digest():
             os.replace(part, target)
             os.utime(target, (mtime, mtime))
             ok += 1
